@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/hashicorp/terraform/plugin"
-	"github.com/terraform-providers/terraform-provider-vault/vault"
+	"github.com/sumup/terraform-provider-vault/vault"
 )
 
 func main() {
