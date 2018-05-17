@@ -6,53 +6,61 @@ import (
 	"log"
 	"strings"
 
+	"crypto/rsa"
 	"github.com/hashicorp/terraform/helper/logging"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/terraform"
 	"github.com/hashicorp/vault/api"
 	"github.com/mitchellh/go-homedir"
+	"github.com/sumup/vault-encrypt-decrypt/file"
 )
 
 func Provider() terraform.ResourceProvider {
 	return &schema.Provider{
 		Schema: map[string]*schema.Schema{
-			"address": &schema.Schema{
+			"address": {
 				Type:        schema.TypeString,
 				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("VAULT_ADDR", nil),
 				Description: "URL of the root of the target Vault server.",
 			},
-			"token": &schema.Schema{
+			"token": {
 				Type:        schema.TypeString,
 				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("VAULT_TOKEN", ""),
 				Description: "Token to use to authenticate to Vault.",
 			},
-			"ca_cert_file": &schema.Schema{
+			"private_key_path": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("VAULT_PRIVATE_KEY_PATH", ""),
+				Description: "Path to private key used to decrypt `encrypted_passfile_path`.",
+			},
+			"ca_cert_file": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				DefaultFunc: schema.EnvDefaultFunc("VAULT_CACERT", ""),
 				Description: "Path to a CA certificate file to validate the server's certificate.",
 			},
-			"ca_cert_dir": &schema.Schema{
+			"ca_cert_dir": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				DefaultFunc: schema.EnvDefaultFunc("VAULT_CAPATH", ""),
 				Description: "Path to directory containing CA certificate files to validate the server's certificate.",
 			},
-			"client_auth": &schema.Schema{
+			"client_auth": {
 				Type:        schema.TypeList,
 				Optional:    true,
 				Description: "Client authentication credentials.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"cert_file": &schema.Schema{
+						"cert_file": {
 							Type:        schema.TypeString,
 							Required:    true,
 							DefaultFunc: schema.EnvDefaultFunc("VAULT_CLIENT_CERT", ""),
 							Description: "Path to a file containing the client certificate.",
 						},
-						"key_file": &schema.Schema{
+						"key_file": {
 							Type:        schema.TypeString,
 							Required:    true,
 							DefaultFunc: schema.EnvDefaultFunc("VAULT_CLIENT_KEY", ""),
@@ -61,13 +69,13 @@ func Provider() terraform.ResourceProvider {
 					},
 				},
 			},
-			"skip_tls_verify": &schema.Schema{
+			"skip_tls_verify": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				DefaultFunc: schema.EnvDefaultFunc("VAULT_SKIP_VERIFY", ""),
 				Description: "Set this to true only if the target Vault server is an insecure development instance.",
 			},
-			"max_lease_ttl_seconds": &schema.Schema{
+			"max_lease_ttl_seconds": {
 				Type:     schema.TypeInt,
 				Optional: true,
 
@@ -84,9 +92,11 @@ func Provider() terraform.ResourceProvider {
 		ConfigureFunc: providerConfigure,
 
 		DataSourcesMap: map[string]*schema.Resource{
-			"vault_approle_auth_backend_role_id": approleAuthBackendRoleIDDataSource(),
-			"vault_aws_access_credentials":       awsAccessCredentialsDataSource(),
-			"vault_generic_secret":               genericSecretDataSource(),
+			"vault_approle_auth_backend_role_id":   approleAuthBackendRoleIDDataSource(),
+			"vault_kubernetes_auth_backend_config": kubernetesAuthBackendConfigDataSource(),
+			"vault_kubernetes_auth_backend_role":   kubernetesAuthBackendRoleDataSource(),
+			"vault_aws_access_credentials":         awsAccessCredentialsDataSource(),
+			"vault_generic_secret":                 genericSecretDataSource(),
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
@@ -106,12 +116,27 @@ func Provider() terraform.ResourceProvider {
 			"vault_database_secret_backend_connection":  databaseSecretBackendConnectionResource(),
 			"vault_database_secret_backend_role":        databaseSecretBackendRoleResource(),
 			"vault_generic_secret":                      genericSecretResource(),
+			"vault_encrypted_secret":                    encryptedSecretResource(),
+			"vault_kubernetes_auth_backend_config":      kubernetesAuthBackendConfigResource(),
+			"vault_kubernetes_auth_backend_role":        kubernetesAuthBackendRoleResource(),
 			"vault_okta_auth_backend":                   oktaAuthBackendResource(),
 			"vault_okta_auth_backend_user":              oktaAuthBackendUserResource(),
 			"vault_okta_auth_backend_group":             oktaAuthBackendGroupResource(),
 			"vault_policy":                              policyResource(),
 			"vault_mount":                               mountResource(),
 		},
+	}
+}
+
+type EncryptedClient struct {
+	api.Client
+	privateKey *rsa.PrivateKey
+}
+
+func NewEncryptedClient(client *api.Client, privateKey *rsa.PrivateKey) *EncryptedClient {
+	return &EncryptedClient{
+		*client,
+		privateKey,
 	}
 }
 
@@ -166,6 +191,23 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 		token = strings.TrimSpace(string(tokenBytes))
 	}
 
+	var privateKey *rsa.PrivateKey
+	privateKeyPathTypeless := d.Get("private_key_path")
+	switch privateKeyPathTypeless.(type) {
+	case string:
+		privateKeyPath := privateKeyPathTypeless.(string)
+		if privateKeyPath != "" {
+			key, err := file.ReadPrivateKeyFromPath(privateKeyPath)
+			if err != nil {
+				return nil, err
+			}
+
+			privateKey = key
+		}
+	default:
+		return nil, fmt.Errorf("non-string private_key_path")
+	}
+
 	// In order to enforce our relatively-short lease TTL, we derive a
 	// temporary child token that inherits all of the policies of the
 	// token we were given but expires after max_lease_ttl_seconds.
@@ -198,5 +240,5 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 
 	client.SetToken(childToken)
 
-	return client, nil
+	return NewEncryptedClient(client, privateKey), nil
 }

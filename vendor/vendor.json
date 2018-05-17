@@ -616,6 +616,12 @@
 			"revisionTime": "2017-04-08T21:24:09Z"
 		},
 		{
+			"checksumSHA1": "L3/DyU4jNl+Z4S8uo1Ajr2PJ9zE=",
+			"path": "github.com/sumup/vault-encrypt-decrypt",
+			"revision": "0918641c68ea8338d301ed4ac548dcaf609f6ad1",
+			"version": "0918641c68ea8338d301ed4ac548dcaf609f6ad1"
+		},
+		{
 			"checksumSHA1": "vE43s37+4CJ2CDU6TlOUOYE0K9c=",
 			"path": "golang.org/x/crypto/bcrypt",
 			"revision": "9477e0b78b9ac3d0b03822fd95422e2fe07627cd",
@@ -718,5 +724,5 @@
 			"versionExact": "v1.6.1"
 		}
 	],
-	"rootPath": "github.com/terraform-providers/terraform-provider-vault"
+	"rootPath": "github.com/sumup/terraform-provider-vault"
 }

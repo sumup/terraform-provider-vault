@@ -51,3 +51,7 @@ func calculateConflictsWith(self string, group []string) []string {
 	}
 	return results
 }
+
+func trimStringStateFunc(value interface{}) string {
+	return strings.TrimSpace(value.(string))
+}
