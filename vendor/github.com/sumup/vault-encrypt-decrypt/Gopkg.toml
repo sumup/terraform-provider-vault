@@ -42,6 +42,3 @@
   branch = "master"
   name = "github.com/hashicorp/hcl"
 
-[[constraint]]
-  name = "gopkg.in/ini.v1"
-  version = "1.36.0"

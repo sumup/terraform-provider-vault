@@ -1,0 +1,5 @@
+vault-encrypt-decrypt*
+.idea
+vendor/
+.git
+vault*
